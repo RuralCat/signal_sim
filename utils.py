@@ -34,8 +34,12 @@ def get_random_range(name, **kwargs):
 
 
 def get_spectrum(y, return_content='all'):
-    n = len(y)
-    spectrum = np.fft.fftshift(np.fft.fft(y) / n)
+    """
+    y: two types: (L,) or (..., L)
+    return_content: 'all', 'sepc', 'am', 'phase'
+    """
+    n = y.shape[0] if y.ndim == 1 else y.shape[-1]
+    spectrum = np.fft.fftshift(np.fft.fft(y, axis=-1) / n, axes=-1)
     spectrum_am = np.abs(spectrum)
     spectrum_phase = np.angle(spectrum)
     if return_content == 'all':
@@ -83,10 +87,47 @@ def plot_spectrum(y, fs, normalize=False, show_phase=False, minimum_value=None):
     plt.show()
 
 
-def compute_sfdr(y, img_y):
+def compute_sfdr(y, img_y, show_infos=True):
+    assert isinstance(y, np.ndarray) and isinstance(img_y, np.ndarray)
+    if y.ndim > 2 and y.shape[-1] == 2:
+        y = array_to_complex(y)
+        img_y = array_to_complex(img_y)
     y_spec_am = get_spectrum(y, return_content='am')
     img_spec_am = get_spectrum(img_y, return_content='am')
     img_spec_am = 20 * np.log10(np.abs(y_spec_am - img_spec_am) + 1e-16)
     y_spec_am = 20 * np.log10(y_spec_am + 1e-16)
 
-    return np.max(y_spec_am) - np.max(img_spec_am)
+    sfdrs = np.max(y_spec_am, axis=-1) - np.max(img_spec_am, axis=-1)
+    
+    if show_infos:
+        print("SFDR range (dbc): {:.2f} ~ {:.2f}, mean value: {:.2f}".format(
+            np.min(sfdrs), np.max(sfdrs), np.mean(sfdrs)))
+    return sfdrs
+
+
+def compute_phase_error(y, img_y, data_type='tone', show_infos=True):
+    assert isinstance(y, np.ndarray) and isinstance(img_y, np.ndarray)
+    if y.ndim > 2 and y.shape[-1] == 2:
+        y = array_to_complex(y)
+        img_y = array_to_complex(img_y)
+    if data_type == 'tone':
+        _, ideal_am, ideal_phase = get_spectrum(y, return_content='all')
+        _, img_am, img_phase = get_spectrum(img_y, return_content='all')
+    elif data_type == 'lfm':
+        pass
+    
+
+def plot_sfdr_freqs(sfdrs, data_type='lfm', fs=500e6, f_step=1e6, nb_sample_per_step=100, fixed_bw=10e6):
+    # parse args
+    naq_f = fs / 2
+    if data_type == 'lfm':
+        f0_range = np.arange(-naq_f+fixed_bw/2, naq_f-fixed_bw/2, f_step)
+    else:
+        f0_range = np.arange(-naq_f+f_step, naq_f+f_step, f_step)
+    sfdrs = np.mean(np.reshape(sfdrs, (len(f0_range), nb_sample_per_step)), axis=-1)
+    # plot
+    plt.plot(f0_range/1e6, sfdrs)
+    plt.xlabel('Frequency (MHz)')
+    plt.grid()
+    plt.show()
+

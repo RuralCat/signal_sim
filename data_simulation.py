@@ -35,6 +35,7 @@ def generate_dataset(data_type='lfm',
                      badd_dc_offset=True,
                      dc_dbc_range=None,
                      return_real_img=False,
+                     verbose=0,
                      **kwargs):
     """
     data_type: 'lfm', 'tone', 'multi_tone'
@@ -71,7 +72,11 @@ def generate_dataset(data_type='lfm',
     dtype = np.complex64 if numerical_type == 'complex' else np.float32
     ideal_signals = np.zeros((nb_samples, sample_length), dtype=dtype)
     noise_signals = np.zeros((nb_samples, sample_length), dtype=dtype)
-    for i in tqdm(range(nb_samples), desc='dataset generating...'):
+    settings = []
+    irange = range(nb_samples)
+    if verbose:
+        irange = tqdm(irange, desc='dataset generating...')
+    for i in irange:
         # generate signal
         sig, setting = signal_gen(fs, sampling_time, numerical_type, **kwargs)
         
@@ -97,6 +102,7 @@ def generate_dataset(data_type='lfm',
             noise_sig = add_dc_offset(noise_sig, dc_dbc_range, fs)
         ideal_signals[i] = sig
         noise_signals[i] = noise_sig
+        settings.append(setting)
     
     if numerical_type == 'complex' and return_am_phase:
         ideal_signals = np.stack([np.abs(ideal_signals),
@@ -109,7 +115,46 @@ def generate_dataset(data_type='lfm',
         noise_signals = np.stack([np.real(noise_signals),
                                   np.imag(noise_signals)], axis=-1)
     
-    return ideal_signals, noise_signals, setting
+    return ideal_signals, noise_signals, settings
+
+
+def generate_training_dataset(data_type='lfm',
+                              fs=500e6,
+                              f_step=1e6,
+                              nb_sample_per_step=200,
+                              sample_length=10000,
+                              fixed_bw=10e6):
+    # parse args
+    naq_f = fs / 2
+    if data_type == 'lfm':
+        f0_range = np.arange(-naq_f+f_step/2, naq_f-fixed_bw, f_step)
+    else:
+        f0_range = np.arange(-naq_f+f_step/2, naq_f, f_step)
+    nb_samples = len(f0_range) * nb_sample_per_step
+    # simulate signals
+    ideal_signals = np.zeros((nb_samples, sample_length, 2),
+                             dtype=np.float32)
+    noise_signals = np.zeros((nb_samples, sample_length, 2),
+                             dtype=np.float32)
+    settings = []
+    for i, f0 in tqdm(enumerate(f0_range),
+                      desc='dataset generating...', total=len(f0_range)):
+        _ideal_signals, _noise_signals, _setttings = generate_dataset(
+            data_type=data_type,
+            nb_samples=nb_sample_per_step,
+            fs=fs,
+            sample_length=sample_length,
+            numerical_type='complex',
+            return_real_img=True,
+            f0_range=[f0, f0+f_step],
+            bandwidth_range=[fixed_bw, fixed_bw]
+        )
+        ideal_signals[i*nb_sample_per_step:(i+1)*nb_sample_per_step] = _ideal_signals
+        noise_signals[i*nb_sample_per_step:(i+1)*nb_sample_per_step] = _noise_signals
+        settings.extend(_setttings)
+    inputs = np.reshape(ideal_signals, (nb_samples, sample_length//100, 100, 2))
+    targets = np.reshape(ideal_signals-noise_signals, (nb_samples, sample_length//100, 200))
+    return ideal_signals, noise_signals, inputs, targets, settings
 
 
 def sim_v0():
@@ -178,7 +223,15 @@ def sim_v1():
     )
     plot_spectrum(ideal_signals[0], fs=1e9, normalize=False)
     plot_spectrum(noise_signals[0], fs=1e9, normalize=False)
+    
+
+def sim_v2():
+    ideal_signals, image_signals, inputs, targets, settings = generate_training_dataset(
+        data_type='tone',
+        nb_sample_per_step=1
+    )
+    sfdrs = compute_sfdr(ideal_signals, image_signals)
 
 
 if __name__ == '__main__':
-    sim_v1()
+    sim_v2()

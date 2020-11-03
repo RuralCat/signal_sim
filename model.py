@@ -1,7 +1,7 @@
 
 from tensorflow.keras import layers as tl
 from tensorflow.keras import backend as K
-from tensorflow.keras.models import TFModel
+from tensorflow.keras.models import Model
 from tensorflow.keras.callbacks import Callback
 
 
@@ -19,4 +19,4 @@ def mlp(sig_type='complex'):
 
     outputs = x
 
-    return TFModel(inputs=inputs, outputs=outputs)
+    return Model(inputs=inputs, outputs=outputs)
