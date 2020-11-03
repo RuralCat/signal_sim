@@ -2,7 +2,7 @@
     Data simulation for zero-IF receiver
 """
 
-from utils import plot_spectrum, get_spectrum
+from utils import plot_spectrum, get_spectrum, compute_sfdr
 from utils import uniform_rand
 from signal_gen import generate_random_lfm
 from signal_gen import generate_random_tone
@@ -34,6 +34,7 @@ def generate_dataset(data_type='lfm',
                      noise_dbc_range=None,
                      badd_dc_offset=True,
                      dc_dbc_range=None,
+                     return_real_img=False,
                      **kwargs):
     """
     data_type: 'lfm', 'tone', 'multi_tone'
@@ -99,11 +100,16 @@ def generate_dataset(data_type='lfm',
     
     if numerical_type == 'complex' and return_am_phase:
         ideal_signals = np.stack([np.abs(ideal_signals),
-                                  np.angle(ideal_signals)], axis=1)
+                                  np.angle(ideal_signals)], axis=-1)
         noise_signals = np.stack([np.abs(noise_signals),
-                                  np.angle(noise_signals)], axis=1)
+                                  np.angle(noise_signals)], axis=-1)
+    elif numerical_type == 'complex' and return_real_img:
+        ideal_signals = np.stack([np.real(ideal_signals),
+                                  np.imag(ideal_signals)], axis=-1)
+        noise_signals = np.stack([np.real(noise_signals),
+                                  np.imag(noise_signals)], axis=-1)
     
-    return ideal_signals, noise_signals
+    return ideal_signals, noise_signals, setting
 
 
 def sim_v0():
@@ -111,7 +117,7 @@ def sim_v0():
     # sampling rate:fs(GHz); band width: bw(MHz); time width: tw(us)
     # start frequency:f0(MHz); sampling time: st(us);
     fs = 1.0 * 1e9
-    bw = 10.0 * 1e6
+    bw = 50.0 * 1e6
     tw = 1e-5
     f0 = 150 * 1e6
     st = 10e-6
@@ -135,33 +141,33 @@ def sim_v0():
     am = am * 0.2 + 0.8
     y = am * y
     plot_spectrum(y, fs, normalize=False)
-    
-    # add image
-    image_dbc = 50
-    img_y = y + 10 ** (-image_dbc / 20) * np.conj(y)
-    plot_spectrum(img_y, fs, normalize=False)
-    
+
     # add non-linearity
-    in_y = img_y
-    non_liner_y = in_y + 0.001 * in_y ** 3
+    non_liner_y = add_nonlinerity(y)
     plot_spectrum(non_liner_y, fs, normalize=False)
-    
+
     # white noise
     noise_y = add_white_noise(non_liner_y, dbc=80 + 10)
     plot_spectrum(noise_y, fs, normalize=False)
-    
+
     # add dc offset
     dc_y = add_dc_offset(noise_y, dc_dbc=[40, 60], fs=fs)
     plot_spectrum(dc_y, fs, normalize=False)
+
+    # add image
+    img_y = add_image(dc_y, fs=fs)
+    plot_spectrum(img_y, fs, normalize=False)
     
     # quantization
     quant_y = quantization_fixed(dc_y, bit=8)
     plot_spectrum(quant_y, fs, normalize=False)
+    
+    print('SFDR: ', compute_sfdr(noise_y, img_y))
 
 
 def sim_v1():
-    ideal_signals, noise_signals = generate_dataset(
-        data_type='tone',
+    ideal_signals, noise_signals, _ = generate_dataset(
+        data_type='lfm',
         nb_samples=10,
         fs=1e9,
         sample_length=10000,

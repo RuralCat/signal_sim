@@ -3,6 +3,16 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def complex_to_array(y):
+    assert isinstance(y, np.ndarray) and y.dtype == np.complex
+    return np.stack([np.real(y), np.imag(y)], axis=-1)
+
+
+def array_to_complex(y):
+    assert isinstance(y, np.ndarray) and y.shape[-1] == 2
+    return y[..., 0] + 1j * y[..., 1]
+
+
 def uniform_rand(shape, a, b=None):
     """
     uniform random [a, b]
@@ -52,7 +62,7 @@ def plot_spectrum(y, fs, normalize=False, show_phase=False, minimum_value=None):
 
     if show_phase:
         # create figure
-        fig, axs = plt.subplots(2, 1)
+        fig, axs = plt.subplots(1, 2, figsize=(14, 4))
         # set label
         axs[0].set_xlabel('Frequency(MHz)')
         axs[0].set_ylabel('Amplitude')
@@ -71,3 +81,12 @@ def plot_spectrum(y, fs, normalize=False, show_phase=False, minimum_value=None):
         plt.ylabel('Amplitude')
         plt.grid()
     plt.show()
+
+
+def compute_sfdr(y, img_y):
+    y_spec_am = get_spectrum(y, return_content='am')
+    img_spec_am = get_spectrum(img_y, return_content='am')
+    img_spec_am = 20 * np.log10(np.abs(y_spec_am - img_spec_am) + 1e-16)
+    y_spec_am = 20 * np.log10(y_spec_am + 1e-16)
+
+    return np.max(y_spec_am) - np.max(img_spec_am)

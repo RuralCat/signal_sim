@@ -1,0 +1,18 @@
+
+# pycharm setting
+.idea/
+
+# temp file
+.ipynb_checkpoints/
+ssh
+train_script.ipynb
+
+# weights file
+*.hdf5
+*.pyc
+*.pic
+*.npy
+*.pickle
+
+# pycache
+**/__pycache__/
